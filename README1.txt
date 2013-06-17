@@ -41,3 +41,6 @@ project configured in CruiseControl. The project models the game Connect Four. F
 about Connect Four see http://en.wikipedia.org/wiki/Connect_Four
 
 You are free to use this implementation of connect four under the license terms specified.
+
+
+This is test diff.
