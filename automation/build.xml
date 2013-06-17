@@ -1,0 +1,152 @@
+<project default="build" basedir="../">
+	<!--
+    	DO NOT RUN! Build File used by Build Server.
+        Delegating build script, used by cruisecontrol to build Project.
+        Will be checked out by bootstrappers before build process starts.
+        Implicit ANT properties set by cruisecontrol.
+        1. ${label}
+        2. ${cctimestamp}
+        Can be used for passing properties to project build file.
+        NOTE:
+            1. Expects the label from cruisecontrol as "Build.1"
+            2. basedir is set to the project root.
+    -->
+
+	<taskdef resource="net/sf/antcontrib/antcontrib.properties"/>
+	<property file="automation/automation.properties"/>
+
+	<property environment="env"/>
+	<property name="sdk.dir" value="${env.SDK_HOME}" />
+
+	<property file="${env.CC_HOME}/buildmanager.properties"/>
+	<path id="taskdefclasspath">
+		<fileset dir="${sdk.dir}/ext/svnant">
+			<include name="*.jar"/>
+		</fileset>
+	</path>
+
+	<taskdef name="svn" classname="org.tigris.subversion.svnant.SvnTask">
+		<classpath refid="taskdefclasspath" />
+	</taskdef>
+	<property name="svn.failonerror" value="true"/>
+	<property name ="cruise_build" value = "true"/>
+
+
+	<target name="update-buildnumber" depends="checkOS">
+		<!-- Updating build number from cruisecontrol label -->
+		<!--svn username="${svn.user}" password="${svn.password}" javahl="false">
+			<revert file="${basedir}\build.number"/>
+		</svn>
+		<svn username="${svn.user}" password="${svn.password}" javahl="false">
+			<update file="${basedir}\build.number"/>
+		</svn-->
+		<propertyfile file="build.number" comment="Build Number for ANT. Do not edit!">
+			<entry key="build.number" value="${label}"/>
+		</propertyfile>
+		<!-- Replace the label with build number -->
+		<replaceregexp file="build.number" match="^(build.number=)(.*)\.(\d*)$" replace="\1\3" byline="true"/>
+		<!-- Load the new build number -->
+		<property file="build.number" />
+		<echo message="Starting to build ${project.name}.${build.number}"/>
+	</target>
+
+	<target name="checkOS">
+		<condition property="isOSWindows">
+			<os family="windows" />
+		</condition>
+		<if>
+			<equals arg1="${isOSWindows}" arg2="true" />
+			<then>
+				<property name="os.type" value="Windows"/>
+			</then>
+			<else>
+				<property name="os.type" value="linux"/>
+			</else>
+		</if>
+	</target>
+	<target name="check-in-updates" depends ="update-buildnumber,checkOS">
+
+		<!--svn username="${svn.user}" password="${svn.password}" javahl="false">
+			<commit
+                message="Commit done by build server (Build : ${build.number})"
+                file="${basedir}\build.number">
+			</commit>
+
+			<status
+                path="${basedir}\build.number"
+                lastChangedRevisionProperty="status.lastCommitRevision"
+                revisionProperty="status.revision"
+                lastCommitAuthorProperty="status.lastCommitAuthor"/>
+		</svn-->
+
+		<property name="repository.revision" value="${status.lastCommitRevision}" />
+		<echo> repostiory revison is ${repository.revision} </echo>
+		<antcall target="publish-revisionnumber"/>
+		<sendbuildregistration filename="statusreport/buildregistration_${project.name}_build${build.number}.xml"/> 
+
+	</target>
+
+	<target name="getlatest-by-revision">
+
+		<echo message="${repository.revision}" />
+		<sendbuildstatus filename="statusreport/buildstatus_${project.name}_build${build.number}.xml"  statustag="buildstatus" statusmsg="Updating the local working Copy"/>	
+		<sleep seconds="10"/>
+		<!--svn username="${svn.user}" password="${svn.password}" javahl="false">
+			<update                
+                dir="${basedir}"
+                revision="${repository.revision}"/>
+		</svn-->        
+		<sendbuildstatus filename="statusreport/buildstatus_${project.name}_build${build.number}.xml"  statustag="buildstatus" statusmsg="Source updation successful"/>	
+	</target>
+
+	<target name="build" if = "label" depends="update-buildnumber,check-in-updates,getlatest-by-revision">
+		<ant antfile="build.xml" inheritrefs="true"/>    
+		<sleep seconds="10"/>
+		<sendbuildstatus filename="statusreport/buildstatus_${project.name}_build${build.number}.xml"  statustag="buildstatus" statusmsg="Ready"/>
+	</target>
+
+	<target name="publish-revisionnumber">
+		<property file="revision.number"/>
+		<property name="older.repo.revision" value = "${new.repo.revision}"/>	 
+
+		<!-- Updating the revision number file -->
+		<echo message="Updating revision number file"/>
+		<propertyfile file="revision.number" comment="Revision number of SVN Repository for build ${build.number}">			
+			<entry key="old.repo.revision" value="${older.repo.revision}" />
+			<entry key="new.repo.revision" value="${repository.revision}" />
+		</propertyfile>
+	</target>
+	<target name="publish-artifacts">
+		<echo message="packing completed"/>
+	</target>
+	<macrodef name="sendbuildregistration">
+		<attribute name="filename"/>
+		<sequential>
+			<!-- create the status file with appropriate tagname and properties like branch and build number -->
+			<concat destfile="@{filename}">&lt;buildregistration branch="${project.name}" branchtype="d1" buildnumber="${build.number}" branchowner = "${branchowner}" cclink ="http://${env.COMPUTERNAME}:8080/cruisecontrol/buildresults/${project.name}?log=log${cctimestamp}" &gt;&lt;summary&gt;&lt;buildservername&gt;${env.COMPUTERNAME}&lt;/buildservername&gt;&lt;javaversion&gt;${java.vm.version}&lt;/javaversion&gt;&lt;os&gt;linux&lt;/os&gt;&lt;osnodes&gt;linux&lt;/osnodes&gt;&lt;lastcommitrevision&gt;${temprevision}&lt;/lastcommitrevision&gt;&lt;lastcommitauthor &gt; ${tempAuthor}&lt;/lastcommitauthor&gt;&lt;branchparent&gt;${branchparent}&lt;/branchparent&gt;&lt;/summary&gt;&lt;/buildregistration&gt;
+			</concat>
+			<copy file="@{filename}" todir="${env.RABIT_FTP_HOME}/buildregistration"/>
+			<!--echo message="${ftp.server.name}_${ftp.user.name}_${ftp.user.password}_${ftp.remote.dir}" /-->
+			<!-- move the file to the buildregistration folder of the ftproot -->
+			<!--ftp server="${control.server.name}" userid="${control.user.name}" password="${control.user.password}" remotedir="${control.remote.dir}" depends="yes">
+				<fileset file="@{filename}"/>
+			</ftp-->
+		</sequential>
+	</macrodef>
+
+	<macrodef name="sendbuildstatus">
+		<attribute name="filename"/>
+		<attribute name="statustag"/>
+		<attribute name="statusmsg"/>
+		<sequential>
+			<!-- create the status file with appropriate tagname and properties like branch and build number -->
+			<concat destfile="@{filename}">&lt;@{statustag} branch="${project.name}" ostype="linux" buildnumber="${build.number}"&gt;@{statusmsg}&lt;/@{statustag}&gt;</concat>
+			<!-- move the file to the buildregistration folder of the ftproot -->
+			<!--ftp server="${control.server.name}" userid="${control.user.name}" password="${control.user.password}" remotedir="${control.remote.dir}" depends="yes">
+				<fileset file="@{filename}"/>
+			</ftp-->
+			<copy file="@{filename}" todir="${env.RABIT_FTP_HOME}/buildregistration"/>
+		</sequential>
+	</macrodef>
+
+</project>

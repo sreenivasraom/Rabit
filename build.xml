@@ -1,0 +1,77 @@
+<project name="rabitdemo" default="all">
+	
+	<property file="build.properties" />
+	<property file="build.number" />
+	
+    <target name="all" depends="clean, init, compile, sleep, test, sleep, jar, web, sleep"/>
+
+    <target name="clean">
+        <delete dir="build" quiet="true" />
+		<delete dir="dist" quiet="true" />
+    </target>
+
+	<target name="init">
+        <mkdir dir="build" />
+		<mkdir dir="dist"/>
+    </target>
+	
+    <target name="compile">
+	<sendbuildstatus filename="statusreport/buildstatus_${project.name}_build${build.number}.xml"  statustag="buildstatus" statusmsg="Compiling sources"/>
+        <mkdir dir="build/classes"/>
+        <javac srcdir="src/java" destdir="build/classes"/>
+    </target>
+
+    <target name="sleep">
+        <echo message="Sleeping for a showing messages on the rabit ui" />
+        <sleep seconds="6" />
+    </target>
+
+    <target name="test" depends="compile">
+		<sendbuildstatus filename="statusreport/buildstatus_${project.name}_build${build.number}.xml"  statustag="buildstatus" statusmsg="Compiling testcases"/>
+        <mkdir dir="build/test"/>
+		<mkdir dir="build/test/junit"/>
+        <javac srcdir="test/frt/junit" destdir="build/test/junit">
+            <classpath>
+                <pathelement location="build/classes"/>
+                <pathelement location="lib/junit.jar"/>
+            </classpath>
+        </javac>
+
+		  <zip destfile="dist/testcases.zip"
+				basedir="build/test" update="true"  />
+				
+        <!-- mkdir dir="build/test-results"/>
+        <junit haltonfailure="no" printsummary="on">
+            <classpath >
+                <pathelement location="build/classes"/>
+                <pathelement location="lib/junit.jar"/>
+                <pathelement location="build/test/junit"/>
+            </classpath>
+            <formatter type="brief" usefile="false"/>
+            <formatter type="xml" />
+            <batchtest todir="build/test-results" >
+                <fileset dir="build/test/junit" includes="**/*Test.class"/>
+            </batchtest>
+        </junit -->
+    </target>
+
+    <target name="jar" depends="compile">
+		<sendbuildstatus filename="statusreport/buildstatus_${project.name}_build${build.number}.xml"  statustag="buildstatus" statusmsg="Packaging artifacts"/>
+        <jar jarfile="dist/rabitdemo.jar" basedir="build/classes" />
+    </target>
+	
+	<target name="web">
+		
+	</target>
+	
+	<macrodef name="sendbuildstatus">
+	<attribute name="filename"/>
+	<attribute name="statustag"/>
+	<attribute name="statusmsg"/>
+	<sequential>
+		<!-- create the status file with appropriate tagname and properties like branch and build number -->
+		<concat destfile="@{filename}">&lt;@{statustag} branch="${project.name}" ostype="linux" buildnumber="${build.number}"&gt;@{statusmsg}&lt;/@{statustag}&gt;</concat>
+		<copy file="@{filename}" todir="${env.RABIT_FTP_HOME}/buildregistration"/>
+	</sequential>
+</macrodef>
+</project>
